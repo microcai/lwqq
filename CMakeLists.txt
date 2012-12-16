@@ -38,6 +38,21 @@ SET(LWQQSOURCES
 
 add_library(liblwqq STATIC ${LWQQSOURCES} ${GHTTPSOURCES})
 
-target_link_libraries(liblwqq -lev)
-target_link_libraries(liblwqq -lz)
-target_link_libraries(liblwqq -lpthread)
+find_package(EV)
+find_package(ZLIB)
+
+if(EV_FOUND)
+	target_link_libraries(liblwqq ${EV_LIBRARIES})
+	include_directories(${EV_INCLUDE_DIR})
+else()
+	# USE BUNDLED ONE
+	include_directories(${CMAKE_SOURCE_DIR}/libev)
+	target_link_libraries(liblwqq libev)
+endif()
+
+if(ZLIB_FOUND)
+	target_link_libraries(liblwqq ${ZLIB_LIBRARIES})
+else()
+	# USE BUNDLED ONE
+	target_link_libraries(liblwqq zlibstatic)
+endif()
