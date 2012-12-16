@@ -79,7 +79,7 @@ typedef struct LwqqGroup {
     /* ginfo */
     char *face;
     char *memo;
-    char *class;
+    char *Class;
     char *fingermemo;
     char *createtime;
     char *level;
