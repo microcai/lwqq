@@ -1,13 +1,21 @@
 #include <string.h>
 #include <zlib.h>
-#include <ev.h>
+#include <event2/event.h>
 #include <ghttp.h>
 #include "smemory.h"
 #include "http.h"
 #include "logger.h"
 
 #define LWQQ_HTTP_USER_AGENT "User-Agent: Mozilla/5.0 \
-(X11; Linux x86_64; rv:10.0) Gecko/20100101 Firefox/10.0"
+(X11; Linux x86_64; rv:10.0) Gecko/20100101 Firefox/18.0"
+
+/* Those Code for async API */
+typedef struct AsyncWatchData
+{
+    LwqqHttpRequest *request;
+    LwqqAsyncCallback callback;
+    void *data;
+} AsyncWatchData;
 
 static int lwqq_http_do_request(LwqqHttpRequest *request, int method, char *body);
 static void lwqq_http_set_header(LwqqHttpRequest *request, const char *name,
@@ -20,7 +28,7 @@ static char *lwqq_http_get_cookie(LwqqHttpRequest *request, const char *name);
 static int lwqq_http_do_request_async(struct LwqqHttpRequest *request, int method,
                                       char *body, LwqqAsyncCallback callback,
                                       void *data);
-static void ev_io_come(EV_P_ ev_io* w,int revent);
+static void ev_io_come(evutil_socket_t, short, void *);
 
 static void lwqq_http_set_header(LwqqHttpRequest *request, const char *name,
                                 const char *value)
@@ -359,35 +367,39 @@ LwqqHttpRequest *lwqq_http_create_default_request(const char *url,
 }
 
 /************************************************************************/
-/* Those Code for async API */
-typedef struct AsyncWatchData
-{
-    LwqqHttpRequest *request;
-    LwqqAsyncCallback callback;
-    void *data;
-} AsyncWatchData;
+
 
 static pthread_t lwqq_async_tid;
 static pthread_cond_t lwqq_async_cond = PTHREAD_COND_INITIALIZER;
-static int lwqq_async_running = -1;
+static pthread_mutex_t lwqq_async_condmutex = PTHREAD_MUTEX_INITIALIZER;
+static volatile int lwqq_async_running = -1;
+static volatile struct event_base * ev_base;
+static pthread_once_t once_control_ev_base = PTHREAD_ONCE_INIT;
 
-void *lwqq_async_thread(void* data)
+static void * setupevbase()
 {
-    struct ev_loop* loop = EV_DEFAULT;
-    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+	ev_base = event_base_new();
+}
+
+static void *lwqq_async_thread(void* data)
+{
+	pthread_once(&once_control_ev_base,setupevbase);
+
+    //struct ev_loop* loop = ev ;
     while (1) {
         lwqq_async_running = 1;
-        ev_run(loop, 0);
+		event_base_loop(ev_base,EVLOOP_ONCE);
         lwqq_async_running = 0;
-        pthread_mutex_lock(&mutex);
-        pthread_cond_wait(&lwqq_async_cond, &mutex);
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_lock(&lwqq_async_condmutex);
+        pthread_cond_wait(&lwqq_async_cond, &lwqq_async_condmutex);
+        pthread_mutex_unlock(&lwqq_async_condmutex);
     }
 }
 
-static void ev_io_come(EV_P_ ev_io* w,int revent)
+static void ev_io_come(evutil_socket_t sk, short event, void * w)
 {
-    AsyncWatchData *d = (AsyncWatchData *)w->data;
+	
+    AsyncWatchData *d = (AsyncWatchData *)w;
     LwqqErrorCode ec;
     char *buf;
     LwqqHttpRequest *lhr = d->request;
@@ -449,7 +461,7 @@ done:
     d->callback(ec, lhr->response, d->data);
 
     /* OK, exit this request */
-    ev_io_stop(EV_DEFAULT, w);
+	//event_base_loopexit(ev_base,NULL);
     lwqq_http_request_free(d->request);
     s_free(d);
     s_free(w);
@@ -496,18 +508,17 @@ static int lwqq_http_do_request_async(struct LwqqHttpRequest *request, int metho
         return -1;
     }
 
-    ev_io *watcher = (ev_io *)s_malloc(sizeof(ev_io));
-    
     ghttp_request* req = (ghttp_request*)request->req;
-    
-    ev_io_init(watcher, ev_io_come, ghttp_get_socket(req), EV_READ);
-    AsyncWatchData *d = s_malloc(sizeof(AsyncWatchData));
+
+	AsyncWatchData *d = s_malloc(sizeof(AsyncWatchData));
     d->request = request;
     d->callback = callback;
     d->data = data;
-    watcher->data = d;
-
-    ev_io_start(EV_DEFAULT, watcher);
+	
+	pthread_once(&once_control_ev_base,setupevbase);
+	struct event * ev_io = event_new(ev_base,ghttp_get_socket(req),EV_READ,ev_io_come,d);
+	
+	event_add(ev_io,NULL);
 
     if (lwqq_async_running == -1) {
         lwqq_async_running = 1;

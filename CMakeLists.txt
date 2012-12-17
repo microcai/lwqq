@@ -38,16 +38,16 @@ SET(LWQQSOURCES
 
 add_library(liblwqq STATIC ${LWQQSOURCES} ${GHTTPSOURCES})
 
-find_package(EV)
+find_package(EVENT)
 find_package(ZLIB)
 
-if(EV_FOUND)
-	target_link_libraries(liblwqq ${EV_LIBRARIES})
-	include_directories(${EV_INCLUDE_DIR})
+if(EVENT_FOUND)
+	target_link_libraries(liblwqq ${EVENT_LIBRARIES})
+	include_directories(${EVENT_INCLUDE_DIR})
 else()
 	# USE BUNDLED ONE
-	include_directories(${CMAKE_SOURCE_DIR}/libev)
-	target_link_libraries(liblwqq libev)
+	include_directories(${CMAKE_SOURCE_DIR}/libevent)
+	target_link_libraries(liblwqq libevent)
 endif()
 
 if(ZLIB_FOUND)
