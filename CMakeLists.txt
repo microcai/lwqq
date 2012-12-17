@@ -57,3 +57,8 @@ else()
 	include_directories(${CMAKE_SOURCE_DIR}/zlib)
 	target_link_libraries(liblwqq zlibstatic)
 endif()
+
+if(WIN32)
+	# make sure we can find pthread.h
+	include_directories(${CMAKE_SOURCE_DIR)/win32)
+endif()
