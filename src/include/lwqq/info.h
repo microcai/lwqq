@@ -20,7 +20,7 @@
  * @param lc 
  * @param err 
  */
-void lwqq_info_get_friends_info(LwqqClient *lc, LwqqErrorCode *err);
+LwqqAsyncEvent* lwqq_info_get_friends_info(LwqqClient *lc, LwqqErrorCode *err);
 
 /** 
  * Get QQ groups' name information. Get only 'name', 'gid' , 'code' .
@@ -28,7 +28,10 @@ void lwqq_info_get_friends_info(LwqqClient *lc, LwqqErrorCode *err);
  * @param lc 
  * @param err 
  */
-void lwqq_info_get_group_name_list(LwqqClient *lc, LwqqErrorCode *err);
+LwqqAsyncEvent* lwqq_info_get_group_name_list(LwqqClient *lc, LwqqErrorCode *err);
+
+LwqqAsyncEvent* lwqq_info_get_discu_name_list(LwqqClient* lc);
+
 
 /** 
  * Get detail information of QQ friend(NB: include myself)
@@ -41,7 +44,28 @@ void lwqq_info_get_group_name_list(LwqqClient *lc, LwqqErrorCode *err);
  */
 void lwqq_info_get_friend_detail_info(LwqqClient *lc, LwqqBuddy *buddy,
                                       LwqqErrorCode *err);
+/**
+ * Store QQ face to LwqqBuddy::avatar
+ * and save it possibly
+ * @note you want to cache it you 
+ *       first need provide qqnumber of group or buddy
+ *       or lwqq do not know save it to where
+ *       understand?
+ * @param lc
+ * @param buddy or group
+ * @param err the pointer of LwqqErrorCode
+ * @return 1 means updated from server.
+ *         2 means read from local cache
+ *         0 means failed
+ */
+#define lwqq_info_get_friend_avatar(lc,buddy) \
+((buddy!=NULL) ? lwqq_info_get_avatar(lc,0,buddy):NULL) 
 
+#define lwqq_info_get_group_avatar(lc,group) \
+((group!=NULL) ? lwqq_info_get_avatar(lc,1,group):NULL) 
+
+
+LwqqAsyncEvent* lwqq_info_get_avatar(LwqqClient* lc,int isgroup,void* grouporbuddy);
 /** 
  * Get all friends qqnumbers
  * 
@@ -59,7 +83,13 @@ void lwqq_info_get_all_friend_qqnumbers(LwqqClient *lc, LwqqErrorCode *err);
  * @return qqnumber on sucessful, NB: caller is responsible for freeing
  * the memory returned by this function
  */
-char *lwqq_info_get_friend_qqnumber(LwqqClient *lc, const char *uin);
+#define lwqq_info_get_friend_qqnumber(lc,buddy) \
+((buddy!=NULL) ? lwqq_info_get_qqnumber(lc,0,buddy):NULL) 
+
+#define lwqq_info_get_group_qqnumber(lc,group) \
+((group!=NULL) ? lwqq_info_get_qqnumber(lc,1,group):NULL) 
+
+LwqqAsyncEvent* lwqq_info_get_qqnumber(LwqqClient* lc,int isgroup,void* grouporbuddy);
 
 /**
  * Get QQ groups detail information. 
@@ -68,8 +98,9 @@ char *lwqq_info_get_friend_qqnumber(LwqqClient *lc, const char *uin);
  * @param group
  * @param err 
  */
-void lwqq_info_get_group_detail_info(LwqqClient *lc, LwqqGroup *group,
+LwqqAsyncEvent* lwqq_info_get_group_detail_info(LwqqClient *lc, LwqqGroup *group,
                                      LwqqErrorCode *err);
+#define lwqq_info_get_discu_detail_info(lc,group) (lwqq_info_get_group_detail_info(lc,group,NULL));
 
 /** 
  * Get online buddies
@@ -80,6 +111,22 @@ void lwqq_info_get_group_detail_info(LwqqClient *lc, LwqqGroup *group,
  * @param lc 
  * @param err 
  */
-void lwqq_info_get_online_buddies(LwqqClient *lc, LwqqErrorCode *err);
+LwqqAsyncEvent* lwqq_info_get_online_buddies(LwqqClient *lc, LwqqErrorCode *err);
+LwqqAsyncEvent* lwqq_info_change_buddy_markname(LwqqClient* lc,LwqqBuddy* buddy,const char* alias);
+LwqqAsyncEvent* lwqq_info_change_group_markname(LwqqClient* lc,LwqqGroup* group,const char* alias);
+LwqqAsyncEvent* lwqq_info_change_discu_topic(LwqqClient* lc,LwqqGroup* group,const char* alias);
+LwqqAsyncEvent* lwqq_info_modify_buddy_category(LwqqClient* lc,LwqqBuddy* buddy,const char* new_cate);
+typedef enum {
+    LWQQ_DEL_FROM_OTHER = 2/* delete buddy and remove myself from other buddy list */
+}LWQQ_DEL_FRIEND_TYPE;
+LwqqAsyncEvent* lwqq_info_delete_friend(LwqqClient* lc,LwqqBuddy* buddy,LWQQ_DEL_FRIEND_TYPE del_type);
+LwqqAsyncEvent* lwqq_info_allow_added_request(LwqqClient* lc,const char* account);
+LwqqAsyncEvent* lwqq_info_deny_added_request(LwqqClient* lc,const char* account,const char* reason);
+LwqqAsyncEvent* lwqq_info_allow_and_add(LwqqClient* lc,const char* account,const char* markname);
+void lwqq_info_get_group_sig(LwqqClient* lc,LwqqGroup* group,const char* to_uin);
+LwqqAsyncEvent* lwqq_info_change_status(LwqqClient* lc,LWQQ_STATUS status);
+LwqqVerifyCode* lwqq_info_add_friend_get_image();
+LwqqAsyncEvent* lwqq_info_mask_group(LwqqClient* lc,LwqqGroup* group,LWQQ_MASK mask);
+
 
 #endif  /* LWQQ_INFO_H */

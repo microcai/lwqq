@@ -449,6 +449,11 @@ struct {								\
 	(listelm)->field.tqe_prev = &(elm)->field.tqe_next;		\
 } while (/*CONSTCOND*/0)
 
+#define	TAILQ_REMOVE_HEAD(head, field) do {				\
+	if (((head)->tqh_first = (head)->tqh_first->field.tqe_next) == NULL) \
+		(head)->tqh_last = &(head)->tqh_first;			\
+} while (/*CONSTCOND*/0)
+
 #define	TAILQ_REMOVE(head, elm, field) do {				\
 	if (((elm)->field.tqe_next) != NULL)				\
 		(elm)->field.tqe_next->field.tqe_prev = 		\

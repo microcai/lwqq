@@ -10,8 +10,11 @@
 
 #ifndef LWQQ_LOGGER_H
 #define LWQQ_LOGGER_H
+#include <string.h>
 
-#define _A_ __FILE__, __LINE__, __PRETTY_FUNCTION__
+#define _FILE_NAME_ (strrchr(__FILE__,'/')?strrchr(__FILE__,'/')+1:__FILE__)
+
+#define _A_ _FILE_NAME_, __LINE__, __PRETTY_FUNCTION__
 #define _LOG_DEBUG		0
 #define LOG_DEBUG		_LOG_DEBUG, _A_
 
@@ -35,5 +38,8 @@
  */
 void lwqq_log(int level, const char *file, int line,
               const char *function, const char* msg, ...);
+
+#define lwqq_puts(str) fprintf(stderr,"%s\n",str);
+
 
 #endif  /* LWQQ_LOGGER_H */
