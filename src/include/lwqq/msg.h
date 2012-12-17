@@ -14,26 +14,14 @@
 #include <pthread.h>
 #include "queue.h"
 
+#define LWQQ_CONTENT_STRING 0
+#define LWQQ_CONTENT_FACE 1
+
 typedef struct LwqqMsgContent {
-    enum {
-        LWQQ_CONTENT_STRING,
-        LWQQ_CONTENT_FACE,
-        LWQQ_CONTENT_OFFPIC,
-//custom face :this can send/recv picture
-        LWQQ_CONTENT_CFACE
-    }type;
+    int type;
     union {
         int face;
         char *str;
-        //webqq protocol
-        //this used in offpic format which may replaced by cface (custom face)
-        struct {
-            char* name;
-            char* data;
-            size_t size;
-            int success;
-            char* file_path;
-        }img;
     } data;
     TAILQ_ENTRY(LwqqMsgContent) entries;
 } LwqqMsgContent ;
