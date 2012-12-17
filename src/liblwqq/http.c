@@ -459,9 +459,7 @@ done:
 
     /* Callback */
     d->callback(ec, lhr->response, d->data);
-
     /* OK, exit this request */
-	//event_base_loopexit(ev_base,NULL);
     lwqq_http_request_free(d->request);
     s_free(d);
     s_free(w);
@@ -516,9 +514,8 @@ static int lwqq_http_do_request_async(struct LwqqHttpRequest *request, int metho
     d->data = data;
 	
 	pthread_once(&once_control_ev_base,setupevbase);
-	struct event * ev_io = event_new(ev_base,ghttp_get_socket(req),EV_READ,ev_io_come,d);
-	
-	event_add(ev_io,NULL);
+
+	event_base_once(ev_base,ghttp_get_socket(req),EV_READ,ev_io_come,d,NULL);
 
     if (lwqq_async_running == -1) {
         lwqq_async_running = 1;
