@@ -46,8 +46,11 @@ if(EVENT_FOUND)
 	include_directories(${EVENT_INCLUDE_DIR})
 else()
 	# USE BUNDLED ONE
-	include_directories(${CMAKE_SOURCE_DIR}/libevent)
+	include_directories(${CMAKE_SOURCE_DIR}/libevent/include)
 	target_link_libraries(liblwqq libevent)
+	if(WIN32)
+		include_directories("${CMAKE_SOURCE_DIR}/libevent/WIN32-Code")
+	endif()
 endif()
 
 if(ZLIB_FOUND)
