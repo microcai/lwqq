@@ -54,5 +54,6 @@ if(ZLIB_FOUND)
 	target_link_libraries(liblwqq ${ZLIB_LIBRARIES})
 else()
 	# USE BUNDLED ONE
+	include_directories(${CMAKE_SOURCE_DIR}/zlib)
 	target_link_libraries(liblwqq zlibstatic)
 endif()
