@@ -27,25 +27,13 @@ SET(LWQQSOURCES
 add_library(liblwqq STATIC ${LWQQSOURCES})
 
 find_package(EV REQUIRED)
-find_package(ZLIB)
-find_package(CURL)
+find_package(ZLIB REQUIRED)
+find_package(CURL REQUIRED)
 
-if(EV_FOUND)
-	target_link_libraries(liblwqq ${EV_LIBRARIES})
-	include_directories(${EV_INCLUDE_DIR})
-endif()
-
-if(ZLIB_FOUND)
-	target_link_libraries(liblwqq ${ZLIB_LIBRARIES})
-else()
-	# USE BUNDLED ONE
-	include_directories("${CMAKE_SOURCE_DIR}/zlib")
-	target_link_libraries(liblwqq zlibstatic)
-endif()
-
-if(CURL_FOUND)
-	target_link_libraries(liblwqq ${CURL_LIBRARIES})
-endif()
+include_directories(${EV_INCLUDE_DIR})
+target_link_libraries(liblwqq ${EV_LIBRARIES})
+target_link_libraries(liblwqq ${ZLIB_LIBRARIES})
+target_link_libraries(liblwqq ${CURL_LIBRARIES})
 
 if(WIN32)
 	# make sure we can find pthread.h
