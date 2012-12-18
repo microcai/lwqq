@@ -26,20 +26,13 @@ SET(LWQQSOURCES
 
 add_library(liblwqq STATIC ${LWQQSOURCES})
 
-find_package(EVENT)
+find_package(EV REQUIRED)
 find_package(ZLIB)
 find_package(CURL)
 
-if(EVENT_FOUND)
-	target_link_libraries(liblwqq ${EVENT_LIBRARIES})
-	include_directories(${EVENT_INCLUDE_DIR})
-else()
-	# USE BUNDLED ONE
-	include_directories(${CMAKE_SOURCE_DIR}/libevent/include)
-	target_link_libraries(liblwqq libevent)
-	if(WIN32)
-		include_directories("${CMAKE_SOURCE_DIR}/libevent/WIN32-Code")
-	endif()
+if(EV_FOUND)
+	target_link_libraries(liblwqq ${EV_LIBRARIES})
+	include_directories(${EV_INCLUDE_DIR})
 endif()
 
 if(ZLIB_FOUND)
@@ -58,6 +51,3 @@ if(WIN32)
 	# make sure we can find pthread.h
 	include_directories("${CMAKE_SOURCE_DIR}/win32")
 endif()
-
-
-target_link_libraries(liblwqq -lev)
