@@ -11,7 +11,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
+//#include <plugin.h>
 #include "async.h"
 #include "smemory.h"
 #include "http.h"
@@ -152,7 +152,7 @@ typedef struct {
     LwqqAsyncTimerCallback callback;
     void* data;
 }LwqqAsyncTimerWrap;
-
+#ifdef USE_LIBEV
 static enum{
     THREAD_NOT_CREATED,
     THREAD_NOW_WAITING,
@@ -162,28 +162,17 @@ static enum{
 pthread_cond_t ev_thread_cond = PTHREAD_COND_INITIALIZER;
 pthread_t pid = 0;
 //### global data area ###//
-static pthread_cond_t lwqq_async_cond = PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t lwqq_async_condmutex = PTHREAD_MUTEX_INITIALIZER;
-static volatile struct event_base * ev_base;
-static pthread_once_t once_control_ev_base = PTHREAD_ONCE_INIT;
-
-static void * setupevbase()
-{
-	ev_base = event_base_new();
-}
-
 static void *ev_run_thread(void* data)
 {
-	pthread_once(&once_control_ev_base,setupevbase);
-
+    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     while(1){
         ev_thread_status = THREAD_NOW_RUNNING;
-        event_base_loop(ev_base,EVLOOP_ONCE);
+        ev_run(EV_DEFAULT,0);
         if(ev_thread_status == THREAD_NOT_CREATED) return NULL;
         ev_thread_status = THREAD_NOW_WAITING;
-        pthread_mutex_lock(&lwqq_async_condmutex);
-        pthread_cond_wait(&ev_thread_cond,&lwqq_async_condmutex);
-        pthread_mutex_unlock(&lwqq_async_condmutex);
+        pthread_mutex_lock(&mutex);
+        pthread_cond_wait(&ev_thread_cond,&mutex);
+        pthread_mutex_unlock(&mutex);
         if(ev_thread_status == THREAD_NOT_CREATED) return NULL;
     }
     return NULL;
@@ -197,34 +186,31 @@ static void start_ev_thread()
         pthread_create(&pid,NULL,ev_run_thread,NULL);
     }
 }
-static void event_cb_wrap(evutil_socket_t sk, short event, void * w)
+static void event_cb_wrap(EV_P_ ev_io *w,int action)
 {
-    LwqqAsyncIoWrap* wrap = w;
+    LwqqAsyncIoWrap* wrap = w->data;
     if(wrap->callback)
-        wrap->callback(wrap->data,sk,event);
+        wrap->callback(wrap->data,w->fd,action);
 }
 void lwqq_async_io_watch(LwqqAsyncIoHandle io,int fd,int action,LwqqAsyncIoCallback fun,void* data)
 {
-	pthread_once(&once_control_ev_base,setupevbase);
-
-	LwqqAsyncIoWrap* wrap = s_malloc0(sizeof(*wrap));
+    ev_io_init(io,event_cb_wrap,fd,action);
+    LwqqAsyncIoWrap* wrap = s_malloc0(sizeof(*wrap));
     wrap->callback = fun;
     wrap->data = data;
-
-	event_base_once(ev_base,fd,action,event_cb_wrap,wrap,NULL);
-
+    io->data = wrap;
+    ev_io_start(EV_DEFAULT,io);
     if(ev_thread_status!=THREAD_NOW_RUNNING) 
         start_ev_thread();
 }
-
 void lwqq_async_io_stop(LwqqAsyncIoHandle io)
 {
+    ev_io_stop(EV_DEFAULT,io);
+    s_free(io->data);
 }
-
-static void timer_cb_wrap(evutil_socket_t sk, short event, void * w)
-//(EV_P_ ev_timer* w,int revents)
+static void timer_cb_wrap(EV_P_ ev_timer* w,int revents)
 {
-    LwqqAsyncTimerWrap* wrap = w;//->data;
+    LwqqAsyncTimerWrap* wrap = w->data;
     int stop=1;
     if(wrap->callback)
         stop = ! wrap->callback(wrap->data);
@@ -233,28 +219,21 @@ static void timer_cb_wrap(evutil_socket_t sk, short event, void * w)
 }
 void lwqq_async_timer_watch(LwqqAsyncTimerHandle timer,unsigned int timeout_ms,LwqqAsyncTimerCallback fun,void* data)
 {
-	pthread_once(&once_control_ev_base,setupevbase);
-
     double second = (timeout_ms) / 1000.0;
-	
+    ev_timer_init(timer,timer_cb_wrap,second,second);
     LwqqAsyncTimerWrap* wrap = s_malloc(sizeof(*wrap));
     wrap->callback = fun;
     wrap->data = data;
-	
-	struct timeval	tv;
-	tv.tv_sec = timeout_ms / 1000;
-	tv.tv_usec = (timeout_ms % 1000);
-
-	event_base_once(ev_base,-1,EV_TIMEOUT,timer_cb_wrap,wrap,&tv);
-
+    timer->data = wrap;
+    ev_timer_start(EV_DEFAULT,timer);
     if(ev_thread_status!=THREAD_NOW_RUNNING) 
         start_ev_thread();
 }
-
 void lwqq_async_timer_stop(LwqqAsyncTimerHandle timer)
 {
+    ev_timer_stop(EV_DEFAULT,timer);
+    s_free(timer->data);
 }
-
 void lwqq_async_global_quit()
 {
     if(ev_thread_status == THREAD_NOW_WAITING){
@@ -262,8 +241,40 @@ void lwqq_async_global_quit()
         pthread_cond_signal(&ev_thread_cond);
     }else if(ev_thread_status == THREAD_NOW_RUNNING){
         ev_thread_status = THREAD_NOT_CREATED;
-		event_base_loopbreak(ev_base);
+        ev_break(EV_DEFAULT,EVBREAK_ALL);
     }
     pthread_join(pid,NULL);
 }
-
+#endif
+#ifdef USE_LIBPURPLE
+static void event_cb_wrap(void* data,int fd,PurpleInputCondition action)
+{
+    LwqqAsyncIoWrap* wrap = data;
+    if(wrap->callback)
+        wrap->callback(wrap->data,fd,action);
+}
+void lwqq_async_io_watch(LwqqAsyncIoHandle io,int fd,int action,LwqqAsyncIoCallback fun,void* data)
+{
+    LwqqAsyncIoWrap* wrap = s_malloc0(sizeof(*wrap));
+    wrap->callback = fun;
+    wrap->data = data;
+    io->ev = purple_input_add(fd,action,event_cb_wrap,wrap);
+    io->wrap = wrap;
+}
+void lwqq_async_io_stop(LwqqAsyncIoHandle io)
+{
+    purple_input_remove(io->ev);
+    io->ev = 0;
+    s_free(io->wrap);
+}
+void lwqq_async_timer_watch(LwqqAsyncTimerHandle timer,unsigned int timeout_ms,LwqqAsyncTimerCallback fun,void* data)
+{
+    *timer = purple_timeout_add(timeout_ms,fun,data);
+}
+void lwqq_async_timer_stop(LwqqAsyncTimerHandle timer)
+{
+    purple_timeout_remove(*timer);
+    *timer = 0;
+}
+void lwqq_async_global_quit() {}
+#endif

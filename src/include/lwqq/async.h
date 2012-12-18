@@ -11,13 +11,35 @@
 #define LWQQ_ASYNC_H
 #include "type.h"
 
-#include <event2/event.h>
-typedef struct timeval  LwqqAsyncTimer;
-typedef int   LwqqAsyncIo;
-typedef void* LwqqAsyncTimerHandle;
-typedef void* LwqqAsyncIoHandle;
+
+#ifndef USE_LIBPURPLE
+#ifndef USE_LIBEV
+#define USE_LIBEV
+#endif
+#endif
+
+#ifdef USE_LIBPURPLE
+#include <eventloop.h>
+typedef struct{
+    int ev;
+    void* wrap;
+}LwqqAsyncIo;
+typedef int LwqqAsyncTimer;
+typedef LwqqAsyncIo* LwqqAsyncIoHandle;
+typedef LwqqAsyncTimer* LwqqAsyncTimerHandle;
+#define LWQQ_ASYNC_READ PURPLE_INPUT_READ
+#define LWQQ_ASYNC_WRITE PURPLE_INPUT_WRITE
+#endif
+
+#ifdef USE_LIBEV
+#include <ev.h>
+typedef ev_timer  LwqqAsyncTimer;
+typedef ev_io     LwqqAsyncIo;
+typedef ev_timer* LwqqAsyncTimerHandle;
+typedef ev_io*    LwqqAsyncIoHandle;
 #define LWQQ_ASYNC_READ EV_READ
 #define LWQQ_ASYNC_WRITE EV_WRITE
+#endif
 
 /** 
  * call this function when you quit your program.
