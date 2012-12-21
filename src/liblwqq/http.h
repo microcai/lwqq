@@ -13,6 +13,7 @@
 
 #include "type.h"
 #include <stdio.h>
+#include <curl/curl.h>
 
 struct LwqqHttpRequest;
 typedef int (*LwqqAsyncCallback)(struct LwqqHttpRequest* request, void* data);
@@ -35,7 +36,7 @@ typedef struct LwqqHttpRequest {
     void *req;
     void *lc;
     void *header;// read and write.
-    void *recv_head;
+    struct curl_slist *recv_head;
     struct cookie_list* cookie;
     void *form_start;
     void *form_end;

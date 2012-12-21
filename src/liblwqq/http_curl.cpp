@@ -4,11 +4,13 @@
 #include <curl/curl.h>
 #include <stdlib.h>
 #include <assert.h>
+extern "C" {
 #include "async.h"
 #include "smemory.h"
 #include "http.h"
 #include "logger.h"
 #include "queue.h"
+}
 
 #define LWQQ_HTTP_USER_AGENT "Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20100101 Firefox/10.0"
 
@@ -71,7 +73,7 @@ static void lwqq_http_set_header(LwqqHttpRequest *request, const char *name,
 
     size_t name_len = strlen(name);
     size_t value_len = strlen(value);
-    char* opt = s_malloc(name_len+value_len+3);
+    char* opt = (char*) s_malloc(name_len+value_len+3);
 
     strcpy(opt,name);
     opt[name_len] = ':';
@@ -106,7 +108,7 @@ static const char *lwqq_http_get_header(LwqqHttpRequest *request, const char *na
     }
 
     const char *h = NULL;
-    struct curl_slist* list = request->recv_head;
+    struct curl_slist* list = (curl_slist*) request->recv_head;
     while(list!=NULL){
         if(strncmp(name,list->data,strlen(name))==0){
             h = list->data+strlen(name)+2;
@@ -155,10 +157,10 @@ void lwqq_http_request_free(LwqqHttpRequest *request)
     if (request) {
         s_free(request->response);
         s_free(request->location);
-        curl_slist_free_all(request->header);
-        curl_slist_free_all(request->recv_head);
+        curl_slist_free_all((curl_slist*)request->header);
+        curl_slist_free_all((curl_slist*)request->recv_head);
         slist_free_all(request->cookie);
-        curl_formfree(request->form_start);
+        curl_formfree((curl_httppost*)request->form_start);
         if(request->req){
             curl_easy_cleanup(request->req);
         }
@@ -181,10 +183,10 @@ static size_t write_header( void *ptr, size_t size, size_t nmemb, void *userdata
         }
         return size*nmemb;
     }
-    request->recv_head = curl_slist_append(request->recv_head,(char*)ptr);
+    request->recv_head =curl_slist_append(request->recv_head,(char*)ptr);
     //read cookie from header;
     if(strncmp(str,"Set-Cookie",strlen("Set-Cookie"))==0){
-        struct cookie_list * node = s_malloc0(sizeof(*node));
+        struct cookie_list * node = (cookie_list*)s_malloc0(sizeof(*node));
         sscanf(str,"Set-Cookie: %[^=]=%[^;];",node->name,node->value);
         request->cookie = slist_append(request->cookie,node);
     }
@@ -204,17 +206,17 @@ static size_t write_content(void* ptr,size_t size,size_t nmemb,void* userdata)
         const char* content_length = request->get_header(request,"Content-Length");
         if(content_length){
             size_t length = atol(content_length);
-            request->response = s_malloc0(length+10);
+            request->response = (char*) s_malloc0(length+10);
             request->resp_realloc = 0;
         }else{
-            request->response = s_malloc0(size*nmemb+10);
+            request->response =(char*) s_malloc0(size*nmemb+10);
             request->resp_realloc = 1;
         }
         resp_len = 0;
         request->resp_len = 0;
     }
     if(request->resp_realloc){
-        request->response = s_realloc(request->response,resp_len+size*nmemb+5);
+        request->response = (char*)s_realloc(request->response,resp_len+size*nmemb+5);
     }
     memcpy(request->response+resp_len,ptr,size*nmemb);
     request->resp_len+=size*nmemb;
@@ -233,8 +235,7 @@ LwqqHttpRequest *lwqq_http_request_new(const char *uri)
         return NULL;
     }
 
-    LwqqHttpRequest *request;
-    request = s_malloc0(sizeof(*request));
+    LwqqHttpRequest *request = (LwqqHttpRequest*) s_malloc0(sizeof(*request));
     
     request->req = curl_easy_init();
     if (!request->req) {
@@ -334,7 +335,7 @@ static char *unzlib(const char *source, int len, int *total, int isgzip)
         }
         have = CHUNK - strm.avail_out;
         totalsize += have;
-        dest = s_realloc(dest, totalsize+1);
+        dest = (char*)s_realloc(dest, totalsize+1);
         memcpy(dest + totalsize - have, out, have);
     } while (strm.avail_out == 0);
 
@@ -407,13 +408,14 @@ static void async_complete(D_ITEM* conn)
     have_read_bytes = request->resp_len;
     curl_easy_getinfo(request->req,CURLINFO_RESPONSE_CODE,&request->http_code);
 
+    /* Uncompress data here if we have a Content-Encoding header */
+    const char *enc_type = NULL;
+
     /* NB: *response may null */
     if (*resp == NULL) {
         goto failed;
     }
 
-    /* Uncompress data here if we have a Content-Encoding header */
-    const char *enc_type = NULL;
     enc_type = lwqq_http_get_header(request, "Content-Encoding");
     if (enc_type && strstr(enc_type, "gzip")) {
         char *outdata;
@@ -465,7 +467,7 @@ static void check_multi_info(GLOBAL *g)
 static int timer_cb(void* data)
 {
     //这个表示有超时任务出现.
-    GLOBAL* g = data;
+    GLOBAL* g = (GLOBAL*) data;
     //printf("timeout_come\n");
 
     if(!g->multi) return 0;
@@ -480,7 +482,7 @@ static int multi_timer_cb(CURLM *multi, long timeout_ms, void *userp)
 {
     //this function call only when timeout clock '''changed'''.
     //called by curl
-    GLOBAL* g = userp;
+    GLOBAL* g =(GLOBAL*) userp;
     //printf("timer_cb:%ld\n",timeout_ms);
     lwqq_async_timer_stop(&g->timer_event);
     if (timeout_ms > 0) {
@@ -496,7 +498,7 @@ static int multi_timer_cb(CURLM *multi, long timeout_ms, void *userp)
 }
 static void event_cb(void* data,int fd,int revents)
 {
-    GLOBAL* g = data;
+    GLOBAL* g =(GLOBAL*) data;
 
     int action = (revents&LWQQ_ASYNC_READ?CURL_POLL_IN:0)|
                  (revents&LWQQ_ASYNC_WRITE?CURL_POLL_OUT:0);
@@ -523,7 +525,7 @@ static void setsock(S_ITEM*f, curl_socket_t s, CURL*e, int act,GLOBAL* g)
 static int sock_cb(CURL* e,curl_socket_t s,int what,void* cbp,void* sockp)
 {
     S_ITEM *si = (S_ITEM*)sockp;
-    GLOBAL* g = cbp;
+    GLOBAL* g = (GLOBAL*) cbp;
 
     if(what == CURL_POLL_REMOVE) {
         //清除socket关联对象
@@ -535,7 +537,7 @@ static int sock_cb(CURL* e,curl_socket_t s,int what,void* cbp,void* sockp)
     } else {
         if(si == NULL) {
             //关联socket;
-            si = s_malloc0(sizeof(*si));
+            si = (S_ITEM*)s_malloc0(sizeof(*si));
             setsock(si,s,e,what,g);
             curl_multi_assign(g->multi, s, si);
         } else {
@@ -547,7 +549,7 @@ static int sock_cb(CURL* e,curl_socket_t s,int what,void* cbp,void* sockp)
 }
 static int delay_add_handle(void* data)
 {
-    D_ITEM* di = data;
+    D_ITEM* di = (D_ITEM*)data;
     CURLMcode rc = curl_multi_add_handle(global.multi,di->req->req);
 
     if(rc != CURLM_OK){
@@ -559,6 +561,8 @@ static LwqqAsyncEvent* lwqq_http_do_request_async(struct LwqqHttpRequest *reques
                                       char *body, LwqqAsyncCallback callback,
                                       void *data)
 {
+    D_ITEM* di;
+
     if (!request->req)
         return NULL;
 
@@ -576,7 +580,7 @@ static LwqqAsyncEvent* lwqq_http_do_request_async(struct LwqqHttpRequest *reques
         *resp = NULL;
         request->http_code = 0;
         request->resp_len = 0;
-        curl_slist_free_all(request->recv_head);
+        curl_slist_free_all((curl_slist*)(request->recv_head));
         request->recv_head = NULL;
     }
 
@@ -593,7 +597,7 @@ static LwqqAsyncEvent* lwqq_http_do_request_async(struct LwqqHttpRequest *reques
     if(global.multi == NULL){
         lwqq_http_global_init();
     }
-    D_ITEM* di = s_malloc0(sizeof(*di));
+	di = (D_ITEM*) s_malloc0(sizeof(*di));
     curl_easy_setopt(request->req,CURLOPT_PRIVATE,di);
     di->callback = callback;
     di->req = request;
@@ -612,6 +616,8 @@ failed:
 }
 static int lwqq_http_do_request(LwqqHttpRequest *request, int method, char *body)
 {
+    const char *enc_type = NULL;
+
     if (!request->req)
         return -1;
 
@@ -624,7 +630,7 @@ static int lwqq_http_do_request(LwqqHttpRequest *request, int method, char *body
         *resp = NULL;
         request->http_code = 0;
         request->resp_len = 0;
-        curl_slist_free_all(request->recv_head);
+        curl_slist_free_all((curl_slist*)(request->recv_head));
         request->recv_head = NULL;
     }
 
@@ -642,6 +648,7 @@ static int lwqq_http_do_request(LwqqHttpRequest *request, int method, char *body
     have_read_bytes = request->resp_len;
     curl_easy_getinfo(request->req,CURLINFO_RESPONSE_CODE,&request->http_code);
 
+
     // NB: *response may null 
     // jump it .that is no problem.
     if (*resp == NULL) {
@@ -649,7 +656,6 @@ static int lwqq_http_do_request(LwqqHttpRequest *request, int method, char *body
     }
 
     /* Uncompress data here if we have a Content-Encoding header */
-    const char *enc_type = NULL;
     enc_type = lwqq_http_get_header(request, "Content-Encoding");
     if (enc_type && strstr(enc_type, "gzip")) {
         char *outdata;
@@ -681,7 +687,7 @@ static void share_lock(CURL* handle,curl_lock_data data,curl_lock_access access,
     //this is shared access.
     //no need to lock it.
     if(access == CURL_LOCK_ACCESS_SHARED) return;
-    GLOBAL* g = userptr;
+    GLOBAL* g = (GLOBAL*) userptr;
     int idx;
     if(data == CURL_LOCK_DATA_DNS) idx=0;
     else if(data == CURL_LOCK_DATA_CONNECT) idx=1;
@@ -691,7 +697,7 @@ static void share_lock(CURL* handle,curl_lock_data data,curl_lock_access access,
 }
 static void share_unlock(CURL* handle,curl_lock_data data,void* userptr)
 {
-    GLOBAL* g = userptr;
+    GLOBAL* g = (GLOBAL*)userptr;
     int idx;
     if(data == CURL_LOCK_DATA_DNS) idx=0;
     else if(data == CURL_LOCK_DATA_CONNECT) idx=1;
@@ -799,7 +805,7 @@ static void lwqq_http_add_file_content(LwqqHttpRequest* request,const char* name
 
 static int lwqq_http_progress_trans(void* d,double dt,double dn,double ut,double un)
 {
-    LwqqHttpRequest* req = d;
+    LwqqHttpRequest* req = (LwqqHttpRequest*)d;
 
     size_t now = dn+un;
     size_t total = dt+ut;
