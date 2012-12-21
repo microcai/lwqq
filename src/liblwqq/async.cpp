@@ -8,13 +8,16 @@
  * use libev
  *
  */
-
+#include <boost/asio.hpp>
 #include <stdlib.h>
 #include <string.h>
 //#include <plugin.h>
+extern "C" {
 #include "async.h"
 #include "smemory.h"
 #include "http.h"
+}
+
 typedef struct async_dispatch_data {
     DISPATCH_FUNC func;
     LwqqClient* client;
@@ -53,11 +56,13 @@ static int timeout_come(void* p)
 }
 static void async_dispatch(LwqqClient* lc,DISPATCH_FUNC func,void* param)
 {
-    async_dispatch_data* data = malloc(sizeof(async_dispatch_data));
+// 	boost::asio::deadline_timer	t(boost::posix_time::seconds(5));
+    async_dispatch_data* data = (async_dispatch_data*)malloc(sizeof(async_dispatch_data));
     data->func = func;
     data->client = lc;
     data->data = param;
     lwqq_async_timer_watch(&data->handle, 50, timeout_come, data);
+    
 }
 
 void lwqq_async_init(LwqqClient* lc)
@@ -67,13 +72,13 @@ void lwqq_async_init(LwqqClient* lc)
 
 LwqqAsyncEvent* lwqq_async_event_new(void* req)
 {
-    LwqqAsyncEvent* event = s_malloc0(sizeof(LwqqAsyncEvent));
-    event->req = req;
+    LwqqAsyncEvent* event = (LwqqAsyncEvent*)s_malloc0(sizeof(LwqqAsyncEvent));
+    event->req = (LwqqHttpRequest*)req;
     return event;
 }
 LwqqAsyncEvset* lwqq_async_evset_new()
 {
-    LwqqAsyncEvset* l = s_malloc0(sizeof(*l));
+    LwqqAsyncEvset* l = (LwqqAsyncEvset*)s_malloc0(sizeof(*l));
     pthread_mutex_init(&l->lock,NULL);
     pthread_cond_init(&l->cond,NULL);
     return l;
@@ -188,14 +193,14 @@ static void start_ev_thread()
 }
 static void event_cb_wrap(EV_P_ ev_io *w,int action)
 {
-    LwqqAsyncIoWrap* wrap = w->data;
+    LwqqAsyncIoWrap* wrap = (LwqqAsyncIoWrap*)w->data;
     if(wrap->callback)
         wrap->callback(wrap->data,w->fd,action);
 }
 void lwqq_async_io_watch(LwqqAsyncIoHandle io,int fd,int action,LwqqAsyncIoCallback fun,void* data)
 {
     ev_io_init(io,event_cb_wrap,fd,action);
-    LwqqAsyncIoWrap* wrap = s_malloc0(sizeof(*wrap));
+    LwqqAsyncIoWrap* wrap = (LwqqAsyncIoWrap*)s_malloc0(sizeof(*wrap));
     wrap->callback = fun;
     wrap->data = data;
     io->data = wrap;
@@ -210,7 +215,7 @@ void lwqq_async_io_stop(LwqqAsyncIoHandle io)
 }
 static void timer_cb_wrap(EV_P_ ev_timer* w,int revents)
 {
-    LwqqAsyncTimerWrap* wrap = w->data;
+    LwqqAsyncTimerWrap* wrap = (LwqqAsyncTimerWrap*) w->data;
     int stop=1;
     if(wrap->callback)
         stop = ! wrap->callback(wrap->data);
@@ -221,7 +226,7 @@ void lwqq_async_timer_watch(LwqqAsyncTimerHandle timer,unsigned int timeout_ms,L
 {
     double second = (timeout_ms) / 1000.0;
     ev_timer_init(timer,timer_cb_wrap,second,second);
-    LwqqAsyncTimerWrap* wrap = s_malloc(sizeof(*wrap));
+    LwqqAsyncTimerWrap* wrap = (LwqqAsyncTimerWrap*)s_malloc(sizeof(*wrap));
     wrap->callback = fun;
     wrap->data = data;
     timer->data = wrap;

@@ -16,7 +16,7 @@ SET(LWQQSOURCES
 	src/liblwqq/smemory.c
 	src/liblwqq/unicode.c
 	src/liblwqq/http_curl.c
-	src/liblwqq/async.c
+	src/liblwqq/async.cpp
 	src/liblwqq/json.c
 	src/liblwqq/login.c
 	src/liblwqq/msg.c
