@@ -7,6 +7,8 @@
  * 
  * 
  */
+#include <boost/bind.hpp>
+#include <boost/thread.hpp>
 #include <stdlib.h>
 #include <string.h>
 #include <stdlib.h>
@@ -26,7 +28,7 @@ extern "C" {
 #include "info.h"
 }
 
-static void *start_poll_msg(void *msg_list);
+static void start_poll_msg(LwqqRecvMsgList *msg_list);
 static void lwqq_recvmsg_poll_msg(struct LwqqRecvMsgList *list);
 static json_t *get_result_json_object(json_t *json);
 static int parse_recvmsg_from_json(LwqqRecvMsgList *list, const char *str);
@@ -816,9 +818,9 @@ const char* get_host_of_url(const char* url,char* buffer)
 static int set_content_picture_data(LwqqHttpRequest* req,void* data)
 {
     LwqqMsgContent* c = (LwqqMsgContent*)data;
-    int errno = 0;
+    int err = 0;
     if((req->http_code!=200)){
-        errno = LWQQ_EC_HTTP_ERROR;
+        err = LWQQ_EC_HTTP_ERROR;
         goto done;
     }
     switch(c->type){
@@ -836,7 +838,7 @@ static int set_content_picture_data(LwqqHttpRequest* req,void* data)
     req->response = NULL;
 done:
     lwqq_http_request_free(req);
-    return errno;
+    return err;
 }
 static LwqqAsyncEvent* request_content_offpic(LwqqClient* lc,const char* f_uin,LwqqMsgContent* c)
 {
@@ -1110,21 +1112,18 @@ static void insert_recv_msg_with_order(LwqqRecvMsgList* list,LwqqMsg* msg)
  * 
  * @param list
  */
-static void *start_poll_msg(void *msg_list)
+static void start_poll_msg(LwqqRecvMsgList *list)
 {
-    LwqqClient *lc;
-    LwqqHttpRequest *req = NULL;  
+    LwqqClient * lc = list->lc;
     int ret;
     char *s;
     int retcode;
     char msg[1024];
-    LwqqRecvMsgList *list;
 
-    list = (LwqqRecvMsgList *)msg_list;
-    lc = (LwqqClient *)(list->lc);
     if (!lc) {
-        goto failed;
+        return ;
     }
+
     snprintf(msg, sizeof(msg), "{\"clientid\":\"%s\",\"psessionid\":\"%s\"}",
              lc->clientid, lc->psessionid);
     s = url_encode(msg);
@@ -1134,9 +1133,9 @@ static void *start_poll_msg(void *msg_list)
     /* Create a POST request */
     char url[512];
     snprintf(url, sizeof(url), "%s/channel/poll2", "http://d.web2.qq.com");
-    req = lwqq_http_create_default_request(url, NULL);
+    LwqqHttpRequest *req = lwqq_http_create_default_request(url, NULL);
     if (!req) {
-        goto failed;
+        return ;
     }
     req->set_header(req, "Referer", "http://d.web2.qq.com/proxy.html?v=20101025002");
     req->set_header(req, "Content-Transfer-Encoding", "binary");
@@ -1155,17 +1154,11 @@ static void *start_poll_msg(void *msg_list)
             lc->dispatch(lc,lc->async_opt->poll_msg,NULL);
         }
     }
-failed:
-    pthread_exit(NULL);
 }
 
 static void lwqq_recvmsg_poll_msg(LwqqRecvMsgList *list)
 {
-    
-    pthread_attr_init(&list->attr);
-    pthread_attr_setdetachstate(&list->attr, PTHREAD_CREATE_DETACHED);
-
-    pthread_create(&list->tid, &list->attr, start_poll_msg, list);
+    boost::thread(boost::bind(start_poll_msg, list));
 }
 
 ///low level special char mapping
@@ -1406,24 +1399,24 @@ static int upload_cface_back(LwqqHttpRequest *req,void* data)
     LwqqMsgContent *c = (LwqqMsgContent*) d[1];
     s_free(data);
     int ret;
-    int errno = 0;
+    int err = 0;
     char msg[256];
     char *file = msg;
 	char* ptr;
 
     if(req->response)lwqq_puts(req->response);
     if(req->http_code!=200){
-        errno = 1;
+        err = 1;
         goto done;
     }
     ptr = strstr(req->response,"({");
     if(ptr==NULL){
-        errno = 1;
+        err = 1;
         goto done;
     }
     sscanf(ptr,"({'ret':%d,'msg':'%[^\']'",&ret,msg);
     if(ret !=0 && ret !=4){
-        errno = 1;
+        err = 1;
         goto done;
     }
     c->type = LwqqMsgContent::LWQQ_CONTENT_CFACE;
@@ -1444,7 +1437,7 @@ static int upload_cface_back(LwqqHttpRequest *req,void* data)
     pthread_mutex_unlock(&mutex);
 done:
     lwqq_http_request_free(req);
-    return errno;
+    return err;
 }
 static LwqqAsyncEvent* lwqq_msg_upload_content(
         LwqqClient* lc,LwqqMsgMessage* msg,LwqqMsgContent* c)
@@ -1571,9 +1564,9 @@ static int msg_send_back(LwqqHttpRequest* req,void* data)
 	const char* retcode;
     json_t *root = NULL;
     int ret;
-    int errno = 0;
+    int err = 0;
     if (req->http_code != 200) {
-        errno = 1;
+        err = 1;
         goto failed;
     }
     lwqq_puts(req->response);
@@ -1583,17 +1576,17 @@ static int msg_send_back(LwqqHttpRequest* req,void* data)
     if(ret != JSON_OK) goto failed;
     retcode = json_parse_simple_value(root,"retcode");
     if(!retcode){
-        errno = 1;
+        err = 1;
         goto failed;
     }
-    errno = atoi(retcode);
+    err = atoi(retcode);
 failed:
     if(root)
         json_free_value(&root);
-    if(errno)
+    if(err)
         lwqq_puts(req->response);
     lwqq_http_request_free(req);
-    return errno;
+    return err;
 }
 
 int lwqq_msg_send_simple(LwqqClient* lc,LwqqMsgType type,const char* to,const char* message)
@@ -1715,10 +1708,10 @@ static int upload_offline_file_back(LwqqHttpRequest* req,void* data)
 {
     LwqqMsgOffFile* file = (LwqqMsgOffFile* )data;
     json_t* json = NULL;
-    int errno = 0;
+    int err = 0;
     char *end;
     if(req->http_code!=200){
-        errno = 1;
+        err = 1;
         goto done;
     }
     lwqq_puts(req->response);
@@ -1727,7 +1720,7 @@ static int upload_offline_file_back(LwqqHttpRequest* req,void* data)
     *(end+1) = '\0';
     json_parse_document(&json,strchr(req->response,'{'));
     if(strcmp(json_parse_simple_value(json,"retcode"),"0")!=0){
-        errno = 1;
+        err = 1;
         goto done;
     }
     s_free(file->name);
@@ -1737,7 +1730,7 @@ done:
     if(json)
         json_free_value(&json);
     lwqq_http_request_free(req);
-    return errno;
+    return err;
 }
 
 LwqqAsyncEvent* lwqq_msg_send_offfile(LwqqClient* lc,LwqqMsgOffFile* file)
@@ -1760,20 +1753,20 @@ LwqqAsyncEvent* lwqq_msg_send_offfile(LwqqClient* lc,LwqqMsgOffFile* file)
 static int send_offfile_back(LwqqHttpRequest* req,void* data)
 {
     json_t* json = NULL;
-    int errno = 0;
+    int err = 0;
     if(req->http_code != 200){
-        errno = 1;
+        err = 1;
         goto done;
     }
     lwqq_puts(req->response);
     json_parse_document(&json, req->response);
-    errno = atoi(json_parse_simple_value(json, "retcode"));
+    err = atoi(json_parse_simple_value(json, "retcode"));
 done:
     if(json){
         json_free_value(&json);
     }
     lwqq_http_request_free(req);
-    return errno;
+    return err;
 }
 #define rand(n) (rand()%9000+1000)
 int dump_resoponse(LwqqHttpRequest* req,void* data)
