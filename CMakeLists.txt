@@ -19,7 +19,7 @@ SET(LWQQSOURCES
 	src/liblwqq/async.cpp
 	src/liblwqq/json.c
 	src/liblwqq/login.c
-	src/liblwqq/msg.c
+	src/liblwqq/msg.cpp
 	src/liblwqq/type.c
 	src/liblwqq/url.c
 )

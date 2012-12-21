@@ -167,14 +167,16 @@ typedef struct LwqqMsgOffFile{
     time_t expire_time;
     time_t time;
 }LwqqMsgOffFile;
-typedef struct FileTransItem{
+enum _file_status {
+	TRANS_OK=0,
+	TRANS_ERROR=50,
+	TRANS_TIMEOUT=51,
+	REFUSED_BY_CLIENT=53,
+};
+
+    typedef struct FileTransItem{
     char* file_name;
-    enum {
-        TRANS_OK=0,
-        TRANS_ERROR=50,
-        TRANS_TIMEOUT=51,
-        REFUSED_BY_CLIENT=53,
-    }file_status;
+	enum _file_status file_status;
     //int file_status;
     int pro_id;
     LIST_ENTRY(FileTransItem) entries;
@@ -275,7 +277,7 @@ typedef struct LwqqRecvMsgList {
     pthread_attr_t attr;
     pthread_mutex_t mutex;
     TAILQ_HEAD(RecvMsgListHead, LwqqRecvMsg) head;
-    void *lc;                   /**< Lwqq Client reference */
+    LwqqClient *lc;                   /**< Lwqq Client reference */
     void (*poll_msg)(struct LwqqRecvMsgList *list); /**< Poll to fetch msg */
 } LwqqRecvMsgList;
 
@@ -286,7 +288,7 @@ typedef struct LwqqRecvMsgList {
  *
  * @return NULL on failure
  */
-LwqqRecvMsgList *lwqq_recvmsg_new(void *client);
+LwqqRecvMsgList *lwqq_recvmsg_new(LwqqClient* client);
 
 /**
  * Free a LwqqRecvMsgList object
@@ -316,7 +318,7 @@ LwqqAsyncEvent* lwqq_msg_send(LwqqClient *lc, LwqqMsg *msg);
  * @param message
  * @return same as lwqq_msg_send
  */
-int lwqq_msg_send_simple(LwqqClient* lc,int type,const char* to,const char* message);
+int lwqq_msg_send_simple(LwqqClient* lc,LwqqMsgType type,const char* to,const char* message);
 /**
  * more easy way to send message
  */
